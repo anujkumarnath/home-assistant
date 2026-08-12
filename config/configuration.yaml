@@ -1,0 +1,48 @@
+# Loads default set of integrations (frontend, history, logbook, mobile_app, etc.)
+default_config:
+
+# NOTE: as of HA 2026.7+, `http:` config (trusted_proxies etc.) is no
+# longer read from YAML - it lives in config/.storage/http instead
+# ("stable" -> use_x_forwarded_for / trusted_proxies), edited directly
+# since Settings > System > Network doesn't expose those fields yet.
+# Needed so requests forwarded by `tailscale funnel` (which terminates
+# TLS and proxies to 127.0.0.1, arriving at the container as the Docker
+# bridge gateway IP) aren't rejected.
+
+# --- Helpers used by the plug interlock/scheduling automations ---
+
+input_number:
+  max_runtime_minutes:
+    name: Max Plug Runtime
+    icon: mdi:timer-outline
+    min: 1
+    max: 240
+    step: 1
+    unit_of_measurement: min
+
+input_boolean:
+  auto_cycle_enabled:
+    name: Auto Cycle Plugs
+    icon: mdi:autorenew
+
+timer:
+  plug_1_runtime:
+    restore: true
+  plug_2_runtime:
+    restore: true
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+
+lovelace:
+  resource_mode: yaml
+  dashboards:
+    lovelace:
+      mode: yaml
+      filename: ui-lovelace.yaml
+      title: Overview
+      icon: mdi:view-dashboard
+      show_in_sidebar: true
+
+logger:
+  default: warning
