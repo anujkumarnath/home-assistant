@@ -1,0 +1,13 @@
+secrets.yaml
+*.log
+*.log.*
+*.db
+*.db-shm
+*.db-wal
+.storage/
+.cloud/
+.cache/
+deps/
+tts/
+*.lock
+.HA_VERSION
