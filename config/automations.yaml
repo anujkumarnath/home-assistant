@@ -1,0 +1,250 @@
+- id: plug_interlock_and_timer
+  alias: "Plugs: enforce interlock + start runtime timer"
+  description: >-
+    Whenever either plug turns on (from Alexa, the Tuya/Smart Life app, or
+    Home Assistant itself), turn the other one off and start a fresh
+    max-runtime countdown for the one that just turned on.
+  mode: queued
+  max: 10
+  trigger:
+    - platform: state
+      entity_id: switch.ac_plug_1_socket_1
+      to: "on"
+      id: plug_1
+    - platform: state
+      entity_id: switch.ac_plug_2_socket_1
+      to: "on"
+      id: plug_2
+  action:
+    - choose:
+        - conditions: "{{ trigger.id == 'plug_1' }}"
+          sequence:
+            - service: script.activate_plug
+              data:
+                this_switch: switch.ac_plug_1_socket_1
+                other_switch: switch.ac_plug_2_socket_1
+                this_timer: timer.plug_1_runtime
+        - conditions: "{{ trigger.id == 'plug_2' }}"
+          sequence:
+            - service: script.activate_plug
+              data:
+                this_switch: switch.ac_plug_2_socket_1
+                other_switch: switch.ac_plug_1_socket_1
+                this_timer: timer.plug_2_runtime
+
+- id: plug_cancel_timer_on_off
+  alias: "Plugs: cancel runtime timer on manual/Alexa off"
+  description: >-
+    If a plug is switched off before its runtime limit is reached, just
+    cancel its timer. Do NOT hand off to the other plug - manual off means
+    stop, not "switch to the other one".
+  mode: queued
+  max: 10
+  trigger:
+    - platform: state
+      entity_id: switch.ac_plug_1_socket_1
+      to: "off"
+      id: plug_1
+    - platform: state
+      entity_id: switch.ac_plug_2_socket_1
+      to: "off"
+      id: plug_2
+  action:
+    - choose:
+        - conditions: "{{ trigger.id == 'plug_1' }}"
+          sequence:
+            - service: timer.cancel
+              target:
+                entity_id: timer.plug_1_runtime
+        - conditions: "{{ trigger.id == 'plug_2' }}"
+          sequence:
+            - service: timer.cancel
+              target:
+                entity_id: timer.plug_2_runtime
+
+- id: plug_runtime_expired
+  alias: "Plugs: enforce max runtime + auto-cycle handoff"
+  description: >-
+    When a plug's runtime timer finishes, turn it off. If auto-cycle is
+    enabled, turn the other plug on 2s later to keep the rotation going.
+  mode: queued
+  max: 10
+  trigger:
+    - platform: event
+      event_type: timer.finished
+      event_data:
+        entity_id: timer.plug_1_runtime
+      id: plug_1
+    - platform: event
+      event_type: timer.finished
+      event_data:
+        entity_id: timer.plug_2_runtime
+      id: plug_2
+  action:
+    - choose:
+        - conditions: "{{ trigger.id == 'plug_1' }}"
+          sequence:
+            - service: script.set_switch_with_retry
+              data:
+                target_switch: switch.ac_plug_1_socket_1
+                desired_state: "off"
+            - if:
+                - condition: state
+                  entity_id: input_boolean.auto_cycle_enabled
+                  state: "on"
+              then:
+                - delay: "00:00:02"
+                - service: script.set_switch_with_retry
+                  data:
+                    target_switch: switch.ac_plug_2_socket_1
+                    desired_state: "on"
+        - conditions: "{{ trigger.id == 'plug_2' }}"
+          sequence:
+            - service: script.set_switch_with_retry
+              data:
+                target_switch: switch.ac_plug_2_socket_1
+                desired_state: "off"
+            - if:
+                - condition: state
+                  entity_id: input_boolean.auto_cycle_enabled
+                  state: "on"
+              then:
+                - delay: "00:00:02"
+                - service: script.set_switch_with_retry
+                  data:
+                    target_switch: switch.ac_plug_1_socket_1
+                    desired_state: "on"
+
+- id: plug_autocycle_kickoff
+  alias: "Plugs: start the cycle when auto-cycle is enabled"
+  description: >-
+    If auto-cycle gets turned on while both plugs are idle, kick the
+    rotation off by turning plug 1 on.
+  trigger:
+    - platform: state
+      entity_id: input_boolean.auto_cycle_enabled
+      to: "on"
+  condition:
+    - condition: state
+      entity_id: switch.ac_plug_1_socket_1
+      state: "off"
+    - condition: state
+      entity_id: switch.ac_plug_2_socket_1
+      state: "off"
+  action:
+    - service: script.set_switch_with_retry
+      data:
+        target_switch: switch.ac_plug_1_socket_1
+        desired_state: "on"
+
+- id: plug_safety_watchdog
+  alias: "Plugs: watchdog - correct if both are ever on together"
+  description: >-
+    Belt-and-suspenders check in case Tuya cloud push latency or a race
+    condition ever lets both plugs be on at once. Runs every 5 minutes.
+  trigger:
+    - platform: time_pattern
+      minutes: "/5"
+  condition:
+    - condition: state
+      entity_id: switch.ac_plug_1_socket_1
+      state: "on"
+    - condition: state
+      entity_id: switch.ac_plug_2_socket_1
+      state: "on"
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "Plug interlock violation"
+        message: >-
+          Both plugs were ON at the same time. Turning both off and
+          restarting the cycle from plug 1.
+    - service: script.set_switch_with_retry
+      data:
+        target_switch: switch.ac_plug_1_socket_1
+        desired_state: "off"
+    - service: script.set_switch_with_retry
+      data:
+        target_switch: switch.ac_plug_2_socket_1
+        desired_state: "off"
+    - delay: "00:00:02"
+    - service: script.set_switch_with_retry
+      data:
+        target_switch: switch.ac_plug_1_socket_1
+        desired_state: "on"
+
+- id: plug_autocycle_stall_recovery
+  alias: "Plugs: recover from a stalled auto-cycle"
+  description: >-
+    If auto-cycle is enabled but both plugs are off with no runtime timer
+    active (e.g. a turn-on command failed once and nothing retried it),
+    kick the rotation back on. Runs on the same 5-minute cadence as the
+    watchdog above.
+  trigger:
+    - platform: time_pattern
+      minutes: "/5"
+  condition:
+    - condition: state
+      entity_id: input_boolean.auto_cycle_enabled
+      state: "on"
+    - condition: state
+      entity_id: switch.ac_plug_1_socket_1
+      state: "off"
+    - condition: state
+      entity_id: switch.ac_plug_2_socket_1
+      state: "off"
+    - condition: state
+      entity_id: timer.plug_1_runtime
+      state: "idle"
+    - condition: state
+      entity_id: timer.plug_2_runtime
+      state: "idle"
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "Auto-cycle recovered"
+        message: >-
+          Auto-cycle was enabled but both plugs were idle with no timer
+          running - restarting the rotation from plug 1.
+    - service: script.set_switch_with_retry
+      data:
+        target_switch: switch.ac_plug_1_socket_1
+        desired_state: "on"
+
+- id: plug_resync_on_ha_start
+  alias: "Plugs: resync runtime timers on Home Assistant startup"
+  description: >-
+    If Home Assistant restarts while a plug is already on (e.g. it was
+    turned on via Alexa while HA was down), make sure that plug still gets
+    a runtime timer instead of running unmonitored.
+  trigger:
+    - platform: homeassistant
+      event: start
+  action:
+    - delay: "00:00:15"
+    - if:
+        - condition: state
+          entity_id: switch.ac_plug_1_socket_1
+          state: "on"
+        - condition: state
+          entity_id: timer.plug_1_runtime
+          state: "idle"
+      then:
+        - service: script.activate_plug
+          data:
+            this_switch: switch.ac_plug_1_socket_1
+            other_switch: switch.ac_plug_2_socket_1
+            this_timer: timer.plug_1_runtime
+    - if:
+        - condition: state
+          entity_id: switch.ac_plug_2_socket_1
+          state: "on"
+        - condition: state
+          entity_id: timer.plug_2_runtime
+          state: "idle"
+      then:
+        - service: script.activate_plug
+          data:
+            this_switch: switch.ac_plug_2_socket_1
+            other_switch: switch.ac_plug_1_socket_1
+            this_timer: timer.plug_2_runtime
