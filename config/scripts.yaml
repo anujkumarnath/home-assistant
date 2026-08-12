@@ -1,0 +1,67 @@
+set_switch_with_retry:
+  alias: Set a switch's state with retries and a failure notification
+  description: >-
+    Wraps switch.turn_on/turn_off with up to 3 attempts (5s apart) so a
+    transient Tuya cloud API error (e.g. network error 1106) doesn't
+    silently drop a safety-critical command. Notifies if all retries fail.
+  fields:
+    target_switch:
+      description: entity_id of the switch to set
+      example: switch.ac_plug_1_socket_1
+    desired_state:
+      description: "on or off"
+      example: "on"
+  sequence:
+    - repeat:
+        sequence:
+          - service: "switch.turn_{{ desired_state }}"
+            continue_on_error: true
+            target:
+              entity_id: "{{ target_switch }}"
+          - delay: "00:00:05"
+        until:
+          - condition: or
+            conditions:
+              - condition: template
+                value_template: "{{ is_state(target_switch, desired_state) }}"
+              - condition: template
+                value_template: "{{ repeat.index >= 3 }}"
+    - if:
+        - condition: template
+          value_template: "{{ not is_state(target_switch, desired_state) }}"
+      then:
+        - service: persistent_notification.create
+          data:
+            title: "Plug command failed"
+            message: >-
+              Could not turn {{ desired_state }} {{ target_switch }} after
+              3 attempts. Check Tuya cloud connectivity.
+  mode: queued
+  max: 20
+
+activate_plug:
+  alias: Activate one plug, deactivate the other
+  fields:
+    this_switch:
+      description: entity_id of the plug being turned on
+      example: switch.ac_plug_1_socket_1
+    other_switch:
+      description: entity_id of the plug to turn off
+      example: switch.ac_plug_2_socket_1
+    this_timer:
+      description: entity_id of the runtime timer to (re)start for this plug
+      example: timer.plug_1_runtime
+  sequence:
+    - service: script.set_switch_with_retry
+      data:
+        target_switch: "{{ other_switch }}"
+        desired_state: "off"
+    - service: timer.start
+      target:
+        entity_id: "{{ this_timer }}"
+      data:
+        duration: >-
+          {% set m = states('input_number.max_runtime_minutes') | int(60) %}
+          {{ '%02d:%02d:00' | format((m // 60), (m % 60)) }}
+  mode: queued
+  max: 10
