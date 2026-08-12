@@ -1,0 +1,21 @@
+title: Plugs
+views:
+  - title: Plugs
+    path: plugs
+    icon: mdi:power-socket-eu
+    cards:
+      - type: entities
+        title: Plug Interlock / Scheduler
+        entities:
+          - entity: switch.ac_plug_1_socket_1
+            name: Plug 1
+          - entity: switch.ac_plug_2_socket_1
+            name: Plug 2
+          - type: divider
+          - entity: timer.plug_1_runtime
+            name: Plug 1 runtime remaining
+          - entity: timer.plug_2_runtime
+            name: Plug 2 runtime remaining
+          - type: divider
+          - entity: input_number.max_runtime_minutes
+          - entity: input_boolean.auto_cycle_enabled
