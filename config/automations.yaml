@@ -65,8 +65,12 @@
 - id: plug_runtime_expired
   alias: "Plugs: enforce max runtime + auto-cycle handoff"
   description: >-
-    When a plug's runtime timer finishes, turn it off. If auto-cycle is
-    enabled, turn the other plug on 2s later to keep the rotation going.
+    When a plug's runtime timer finishes: if the OTHER plug's room has
+    opted out (plugX_participate off), just renew this plug's own timer
+    instead of forcing a pointless handoff (full-cycle continuation).
+    Otherwise, if auto-cycle is enabled and away mode is off, turn the
+    other plug on 2s later to keep the rotation going. If neither
+    applies, just turn off.
   mode: queued
   max: 10
   trigger:
@@ -84,58 +88,130 @@
     - choose:
         - conditions: "{{ trigger.id == 'plug_1' }}"
           sequence:
-            - service: script.set_switch_with_retry
-              data:
-                target_switch: switch.ac_plug_1_socket_1
-                desired_state: "off"
             - if:
                 - condition: state
                   entity_id: input_boolean.auto_cycle_enabled
                   state: "on"
+                - condition: state
+                  entity_id: input_boolean.ac_away_mode
+                  state: "off"
+                - condition: state
+                  entity_id: input_boolean.plug2_participate
+                  state: "off"
               then:
-                - delay: "00:00:02"
-                - service: script.set_switch_with_retry
+                # Plug 2's room doesn't want AC right now - keep Plug 1
+                # running instead of a pointless handoff. Renewing the
+                # timer (rather than disabling it) keeps the same
+                # max-runtime safety net in place for the extended run.
+                - service: script.activate_plug
                   data:
-                    target_switch: switch.ac_plug_2_socket_1
-                    desired_state: "on"
-        - conditions: "{{ trigger.id == 'plug_2' }}"
-          sequence:
-            - service: script.set_switch_with_retry
-              data:
-                target_switch: switch.ac_plug_2_socket_1
-                desired_state: "off"
-            - if:
-                - condition: state
-                  entity_id: input_boolean.auto_cycle_enabled
-                  state: "on"
-              then:
-                - delay: "00:00:02"
+                    this_switch: switch.ac_plug_1_socket_1
+                    other_switch: switch.ac_plug_2_socket_1
+                    this_timer: timer.plug_1_runtime
+              else:
                 - service: script.set_switch_with_retry
                   data:
                     target_switch: switch.ac_plug_1_socket_1
-                    desired_state: "on"
+                    desired_state: "off"
+                - if:
+                    - condition: state
+                      entity_id: input_boolean.auto_cycle_enabled
+                      state: "on"
+                    - condition: state
+                      entity_id: input_boolean.ac_away_mode
+                      state: "off"
+                  then:
+                    - delay: "00:00:02"
+                    - service: script.set_switch_with_retry
+                      data:
+                        target_switch: switch.ac_plug_2_socket_1
+                        desired_state: "on"
+        - conditions: "{{ trigger.id == 'plug_2' }}"
+          sequence:
+            - if:
+                - condition: state
+                  entity_id: input_boolean.auto_cycle_enabled
+                  state: "on"
+                - condition: state
+                  entity_id: input_boolean.ac_away_mode
+                  state: "off"
+                - condition: state
+                  entity_id: input_boolean.plug1_participate
+                  state: "off"
+              then:
+                - service: script.activate_plug
+                  data:
+                    this_switch: switch.ac_plug_2_socket_1
+                    other_switch: switch.ac_plug_1_socket_1
+                    this_timer: timer.plug_2_runtime
+              else:
+                - service: script.set_switch_with_retry
+                  data:
+                    target_switch: switch.ac_plug_2_socket_1
+                    desired_state: "off"
+                - if:
+                    - condition: state
+                      entity_id: input_boolean.auto_cycle_enabled
+                      state: "on"
+                    - condition: state
+                      entity_id: input_boolean.ac_away_mode
+                      state: "off"
+                  then:
+                    - delay: "00:00:02"
+                    - service: script.set_switch_with_retry
+                      data:
+                        target_switch: switch.ac_plug_1_socket_1
+                        desired_state: "on"
 
 - id: plug_autocycle_kickoff
-  alias: "Plugs: start the cycle when auto-cycle is enabled"
+  alias: "Plugs: start the cycle when auto-cycle is enabled or away mode ends"
   description: >-
-    If auto-cycle gets turned on while both plugs are idle, kick the
-    rotation off by turning plug 1 on.
+    Kicks the rotation off - starting with Plug 1, unless Plug 1's room
+    has opted out (plug1_participate off), in which case start Plug 2
+    instead - whenever auto-cycle is switched on, or away mode is
+    switched off, while both plugs are idle. Without the away-mode
+    trigger, resuming after coming home would otherwise wait for the
+    next 5-minute stall-recovery tick. Does nothing while ac_away_mode
+    is on or both rooms have opted out.
   trigger:
     - platform: state
       entity_id: input_boolean.auto_cycle_enabled
       to: "on"
+    - platform: state
+      entity_id: input_boolean.ac_away_mode
+      to: "off"
   condition:
+    - condition: state
+      entity_id: input_boolean.auto_cycle_enabled
+      state: "on"
     - condition: state
       entity_id: switch.ac_plug_1_socket_1
       state: "off"
     - condition: state
       entity_id: switch.ac_plug_2_socket_1
       state: "off"
+    - condition: state
+      entity_id: input_boolean.ac_away_mode
+      state: "off"
+    - condition: template
+      value_template: >-
+        {{ is_state('input_boolean.plug1_participate', 'on')
+           or is_state('input_boolean.plug2_participate', 'on') }}
   action:
-    - service: script.set_switch_with_retry
-      data:
-        target_switch: switch.ac_plug_1_socket_1
-        desired_state: "on"
+    - if:
+        - condition: state
+          entity_id: input_boolean.plug1_participate
+          state: "off"
+      then:
+        - service: script.set_switch_with_retry
+          data:
+            target_switch: switch.ac_plug_2_socket_1
+            desired_state: "on"
+      else:
+        - service: script.set_switch_with_retry
+          data:
+            target_switch: switch.ac_plug_1_socket_1
+            desired_state: "on"
 
 - id: plug_safety_watchdog
   alias: "Plugs: watchdog - correct if both are ever on together"
@@ -158,7 +234,7 @@
         title: "Plug interlock violation"
         message: >-
           Both plugs were ON at the same time. Turning both off and
-          restarting the cycle from plug 1.
+          restarting the cycle.
     - service: script.set_switch_with_retry
       data:
         target_switch: switch.ac_plug_1_socket_1
@@ -168,17 +244,38 @@
         target_switch: switch.ac_plug_2_socket_1
         desired_state: "off"
     - delay: "00:00:02"
-    - service: script.set_switch_with_retry
-      data:
-        target_switch: switch.ac_plug_1_socket_1
-        desired_state: "on"
+    - if:
+        - condition: state
+          entity_id: input_boolean.ac_away_mode
+          state: "off"
+        - condition: template
+          value_template: >-
+            {{ is_state('input_boolean.plug1_participate', 'on')
+               or is_state('input_boolean.plug2_participate', 'on') }}
+      then:
+        - if:
+            - condition: state
+              entity_id: input_boolean.plug1_participate
+              state: "off"
+          then:
+            - service: script.set_switch_with_retry
+              data:
+                target_switch: switch.ac_plug_2_socket_1
+                desired_state: "on"
+          else:
+            - service: script.set_switch_with_retry
+              data:
+                target_switch: switch.ac_plug_1_socket_1
+                desired_state: "on"
 
 - id: plug_autocycle_stall_recovery
   alias: "Plugs: recover from a stalled auto-cycle"
   description: >-
     If auto-cycle is enabled but both plugs are off with no runtime timer
     active (e.g. a turn-on command failed once and nothing retried it),
-    kick the rotation back on. Runs on the same 5-minute cadence as the
+    kick the rotation back on - preferring whichever plug hasn't opted
+    out (plugX_participate off). Does nothing while ac_away_mode is on or both
+    rooms have opted out. Runs on the same 5-minute cadence as the
     watchdog above.
   trigger:
     - platform: time_pattern
@@ -199,17 +296,34 @@
     - condition: state
       entity_id: timer.plug_2_runtime
       state: "idle"
+    - condition: state
+      entity_id: input_boolean.ac_away_mode
+      state: "off"
+    - condition: template
+      value_template: >-
+        {{ is_state('input_boolean.plug1_participate', 'on')
+           or is_state('input_boolean.plug2_participate', 'on') }}
   action:
     - service: persistent_notification.create
       data:
         title: "Auto-cycle recovered"
         message: >-
           Auto-cycle was enabled but both plugs were idle with no timer
-          running - restarting the rotation from plug 1.
-    - service: script.set_switch_with_retry
-      data:
-        target_switch: switch.ac_plug_1_socket_1
-        desired_state: "on"
+          running - restarting the rotation.
+    - if:
+        - condition: state
+          entity_id: input_boolean.plug1_participate
+          state: "off"
+      then:
+        - service: script.set_switch_with_retry
+          data:
+            target_switch: switch.ac_plug_2_socket_1
+            desired_state: "on"
+      else:
+        - service: script.set_switch_with_retry
+          data:
+            target_switch: switch.ac_plug_1_socket_1
+            desired_state: "on"
 
 - id: plug_resync_on_ha_start
   alias: "Plugs: resync runtime timers on Home Assistant startup"
@@ -248,3 +362,270 @@
             this_switch: switch.ac_plug_2_socket_1
             other_switch: switch.ac_plug_1_socket_1
             this_timer: timer.plug_2_runtime
+
+- id: ac_cycle_phase_tracker
+  alias: "Plugs: track auto-cycle phase for dashboard display"
+  description: >-
+    Cosmetic only. Keeps input_select.ac_cycle_phase in sync with what the
+    interlock/handoff automations above are actually doing, including the
+    brief "switching" window during the 2s handoff delay in
+    plug_runtime_expired. This automation never calls switch.* or timer.*
+    services - it only reads state and writes to the input_select - so it
+    cannot affect real AC control even if it has a bug.
+  mode: queued
+  max: 10
+  trigger:
+    - platform: state
+      entity_id: switch.ac_plug_1_socket_1
+    - platform: state
+      entity_id: switch.ac_plug_2_socket_1
+    - platform: state
+      entity_id: input_boolean.auto_cycle_enabled
+    - platform: event
+      event_type: timer.finished
+      event_data:
+        entity_id: timer.plug_1_runtime
+      id: expired_1
+    - platform: event
+      event_type: timer.finished
+      event_data:
+        entity_id: timer.plug_2_runtime
+      id: expired_2
+    - platform: homeassistant
+      event: start
+      id: hass_start
+  action:
+    - if:
+        - condition: trigger
+          id: hass_start
+      then:
+        - delay: "00:00:15"
+    - choose:
+        - conditions:
+            - "{{ trigger.id == 'expired_1' }}"
+            - condition: state
+              entity_id: input_boolean.auto_cycle_enabled
+              state: "on"
+          sequence:
+            - service: input_select.select_option
+              target:
+                entity_id: input_select.ac_cycle_phase
+              data:
+                option: "Switching: Plug 1 → Plug 2"
+        - conditions:
+            - "{{ trigger.id == 'expired_2' }}"
+            - condition: state
+              entity_id: input_boolean.auto_cycle_enabled
+              state: "on"
+          sequence:
+            - service: input_select.select_option
+              target:
+                entity_id: input_select.ac_cycle_phase
+              data:
+                option: "Switching: Plug 2 → Plug 1"
+        - conditions:
+            - condition: state
+              entity_id: switch.ac_plug_1_socket_1
+              state: "on"
+          sequence:
+            - service: input_select.select_option
+              target:
+                entity_id: input_select.ac_cycle_phase
+              data:
+                option: "Plug 1 running"
+        - conditions:
+            - condition: state
+              entity_id: switch.ac_plug_2_socket_1
+              state: "on"
+          sequence:
+            - service: input_select.select_option
+              target:
+                entity_id: input_select.ac_cycle_phase
+              data:
+                option: "Plug 2 running"
+        - conditions:
+            - condition: state
+              entity_id: input_boolean.auto_cycle_enabled
+              state: "off"
+          sequence:
+            - service: input_select.select_option
+              target:
+                entity_id: input_select.ac_cycle_phase
+              data:
+                option: "Auto-cycle disabled"
+      default:
+        - service: input_select.select_option
+          target:
+            entity_id: input_select.ac_cycle_phase
+          data:
+            option: "Idle"
+
+- id: ac_plug_connectivity_poll
+  alias: "Plugs: force a fresh Tuya poll for connectivity status"
+  description: >-
+    Actively refreshes both plug switches from Tuya cloud every minute so
+    the dashboard connectivity ring reflects true reachability quickly,
+    instead of waiting for the integration's own ~3-5 min poll cycle (or
+    an idle plug's value simply not changing, which isn't a reliable
+    signal). homeassistant.update_entity only requests a data refresh -
+    it never commands the switches, so it cannot affect real AC control.
+  mode: single
+  trigger:
+    - platform: time_pattern
+      minutes: "/1"
+  action:
+    - service: homeassistant.update_entity
+      target:
+        entity_id:
+          - switch.ac_plug_1_socket_1
+          - switch.ac_plug_2_socket_1
+
+- id: ac_away_mode_enforce
+  alias: "Plugs: force both off while away mode is on"
+  description: >-
+    Away mode is the single override that decides whether either AC may
+    run at all, regardless of auto-cycle, manual control, or skip-cycle
+    settings. Fires both when away mode is switched on and after a Home
+    Assistant restart, covering a plug that was already on before HA
+    started while away mode was separately enabled (e.g. from a phone
+    while HA was offline).
+  mode: queued
+  max: 10
+  trigger:
+    - platform: state
+      entity_id: input_boolean.ac_away_mode
+      to: "on"
+    - platform: homeassistant
+      event: start
+      id: hass_start
+  action:
+    - if:
+        - condition: trigger
+          id: hass_start
+      then:
+        - delay: "00:00:15"
+    - if:
+        - condition: state
+          entity_id: input_boolean.ac_away_mode
+          state: "on"
+      then:
+        - service: script.set_switch_with_retry
+          data:
+            target_switch: switch.ac_plug_1_socket_1
+            desired_state: "off"
+        - service: script.set_switch_with_retry
+          data:
+            target_switch: switch.ac_plug_2_socket_1
+            desired_state: "off"
+
+- id: ac_away_mode_veto
+  alias: "Plugs: veto any plug turning on while away mode is active"
+  description: >-
+    Safety net for away mode - catches every path that could turn a plug
+    on (manual dashboard, Alexa, the Tuya app, or any automation, present
+    or future) without needing that path to individually check away
+    mode. Reactively turns the plug back off within seconds if it slips
+    on while away mode is enabled.
+  mode: queued
+  max: 10
+  trigger:
+    - platform: state
+      entity_id: switch.ac_plug_1_socket_1
+      to: "on"
+      id: plug_1
+    - platform: state
+      entity_id: switch.ac_plug_2_socket_1
+      to: "on"
+      id: plug_2
+  condition:
+    - condition: state
+      entity_id: input_boolean.ac_away_mode
+      state: "on"
+  action:
+    - choose:
+        - conditions: "{{ trigger.id == 'plug_1' }}"
+          sequence:
+            - service: script.set_switch_with_retry
+              data:
+                target_switch: switch.ac_plug_1_socket_1
+                desired_state: "off"
+        - conditions: "{{ trigger.id == 'plug_2' }}"
+          sequence:
+            - service: script.set_switch_with_retry
+              data:
+                target_switch: switch.ac_plug_2_socket_1
+                desired_state: "off"
+
+- id: ac_participate_stop_if_running
+  alias: "Plugs: stop a plug immediately if its room opts out mid-run"
+  description: >-
+    If a room's occupant flips their participate toggle off while their
+    AC is currently the one running, honor that immediately rather than
+    waiting for the timer to expire. Hands off to the other plug if it's
+    available (auto-cycle on, away mode off, other plug still
+    participating); otherwise just stays off.
+  mode: queued
+  max: 10
+  trigger:
+    - platform: state
+      entity_id: input_boolean.plug1_participate
+      to: "off"
+      id: plug_1
+    - platform: state
+      entity_id: input_boolean.plug2_participate
+      to: "off"
+      id: plug_2
+  action:
+    - choose:
+        - conditions:
+            - "{{ trigger.id == 'plug_1' }}"
+            - condition: state
+              entity_id: switch.ac_plug_1_socket_1
+              state: "on"
+          sequence:
+            - service: script.set_switch_with_retry
+              data:
+                target_switch: switch.ac_plug_1_socket_1
+                desired_state: "off"
+            - if:
+                - condition: state
+                  entity_id: input_boolean.auto_cycle_enabled
+                  state: "on"
+                - condition: state
+                  entity_id: input_boolean.ac_away_mode
+                  state: "off"
+                - condition: state
+                  entity_id: input_boolean.plug2_participate
+                  state: "on"
+              then:
+                - delay: "00:00:02"
+                - service: script.set_switch_with_retry
+                  data:
+                    target_switch: switch.ac_plug_2_socket_1
+                    desired_state: "on"
+        - conditions:
+            - "{{ trigger.id == 'plug_2' }}"
+            - condition: state
+              entity_id: switch.ac_plug_2_socket_1
+              state: "on"
+          sequence:
+            - service: script.set_switch_with_retry
+              data:
+                target_switch: switch.ac_plug_2_socket_1
+                desired_state: "off"
+            - if:
+                - condition: state
+                  entity_id: input_boolean.auto_cycle_enabled
+                  state: "on"
+                - condition: state
+                  entity_id: input_boolean.ac_away_mode
+                  state: "off"
+                - condition: state
+                  entity_id: input_boolean.plug1_participate
+                  state: "on"
+              then:
+                - delay: "00:00:02"
+                - service: script.set_switch_with_retry
+                  data:
+                    target_switch: switch.ac_plug_1_socket_1
+                    desired_state: "on"
