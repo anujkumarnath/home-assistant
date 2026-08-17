@@ -4,18 +4,21 @@ views:
     path: plugs
     icon: mdi:power-socket-eu
     cards:
-      - type: entities
-        title: Plug Interlock / Scheduler
-        entities:
-          - entity: switch.ac_plug_1_socket_1
-            name: Plug 1
-          - entity: switch.ac_plug_2_socket_1
-            name: Plug 2
-          - type: divider
-          - entity: timer.plug_1_runtime
-            name: Plug 1 runtime remaining
-          - entity: timer.plug_2_runtime
-            name: Plug 2 runtime remaining
-          - type: divider
-          - entity: input_number.max_runtime_minutes
-          - entity: input_boolean.auto_cycle_enabled
+      - type: custom:ac-cycle-flow-card
+        title: Auto-Cycle Flow
+        phase_entity: input_select.ac_cycle_phase
+        away_entity: input_boolean.ac_away_mode
+        auto_cycle_entity: input_boolean.auto_cycle_enabled
+        max_runtime_entity: input_number.max_runtime_minutes
+        plug1_switch: switch.ac_plug_1_socket_1
+        plug2_switch: switch.ac_plug_2_socket_1
+        plug1_timer: timer.plug_1_runtime
+        plug2_timer: timer.plug_2_runtime
+        plug1_power_entity: sensor.ac_plug_1_power
+        plug2_power_entity: sensor.ac_plug_2_power
+        plug1_current_entity: sensor.ac_plug_1_current
+        plug2_current_entity: sensor.ac_plug_2_current
+        plug1_participate_entity: input_boolean.plug1_participate
+        plug2_participate_entity: input_boolean.plug2_participate
+        plug1_name: "Anuj's AC"
+        plug2_name: "Cinu's AC"
