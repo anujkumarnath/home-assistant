@@ -61,7 +61,7 @@ script: !include scripts.yaml
 lovelace:
   resource_mode: yaml
   resources:
-    - url: /local/ac-cycle-flow-card.js?v=14
+    - url: /local/ac-cycle-flow-card.js?v=15
       type: module
   dashboards:
     lovelace:

@@ -509,20 +509,20 @@ class AcCycleFlowCard extends HTMLElement {
     if (txt) txt.textContent = isOn ? "Participating" : "Skipped";
   }
 
-  _updatePower(el, powerEntityId, currentEntityId, isActive) {
+  _updatePower(el, powerEntityId, currentEntityId) {
     if (!el) return;
     const powerEnt = powerEntityId ? this._hass.states[powerEntityId] : null;
     const currentEnt = currentEntityId ? this._hass.states[currentEntityId] : null;
-    const powerVal = powerEnt && !isNaN(Number(powerEnt.state)) ? Number(powerEnt.state) : null;
-    const currentVal = currentEnt && !isNaN(Number(currentEnt.state)) ? Number(currentEnt.state) : null;
+    const powerVal = powerEnt && !isNaN(Number(powerEnt.state)) ? Number(powerEnt.state) : 0;
+    const currentVal = currentEnt && !isNaN(Number(currentEnt.state)) ? Number(currentEnt.state) : 0;
 
-    if (!isActive || (powerVal === null && currentVal === null)) {
+    const parts = [];
+    if (powerEntityId) parts.push(formatPower(powerVal));
+    if (currentEntityId) parts.push(formatCurrent(currentVal));
+    if (parts.length === 0) {
       el.classList.remove("show");
       return;
     }
-    const parts = [];
-    if (powerVal !== null) parts.push(formatPower(powerVal));
-    if (currentVal !== null) parts.push(formatCurrent(currentVal));
     el.querySelector("span").textContent = parts.join(" · ");
     el.classList.add("show");
   }
@@ -551,8 +551,8 @@ class AcCycleFlowCard extends HTMLElement {
     this._updateRing(els.ringProgress1, els.time1, this._config.plug1_timer);
     this._updateRing(els.ringProgress2, els.time2, this._config.plug2_timer);
 
-    this._updatePower(els.power1, this._config.plug1_power_entity, this._config.plug1_current_entity, plug1On);
-    this._updatePower(els.power2, this._config.plug2_power_entity, this._config.plug2_current_entity, plug2On);
+    this._updatePower(els.power1, this._config.plug1_power_entity, this._config.plug1_current_entity);
+    this._updatePower(els.power2, this._config.plug2_power_entity, this._config.plug2_current_entity);
 
     if (this._config.plug1_participate_entity) {
       this._updateParticipate(els.participate1, hass.states[this._config.plug1_participate_entity]?.state !== "off");
