@@ -24,6 +24,30 @@ input_boolean:
   auto_cycle_enabled:
     name: Auto Cycle Plugs
     icon: mdi:autorenew
+  ac_away_mode:
+    name: AC Away Mode
+    icon: mdi:home-export-outline
+  plug1_participate:
+    name: "Plug 1: Participates in Rotation"
+    icon: mdi:sync
+    initial: true
+  plug2_participate:
+    name: "Plug 2: Participates in Rotation"
+    icon: mdi:sync
+    initial: true
+
+input_select:
+  ac_cycle_phase:
+    name: AC Auto-Cycle Phase
+    icon: mdi:state-machine
+    options:
+      - "Idle"
+      - "Plug 1 running"
+      - "Plug 2 running"
+      - "Switching: Plug 1 → Plug 2"
+      - "Switching: Plug 2 → Plug 1"
+      - "Auto-cycle disabled"
+    initial: "Idle"
 
 timer:
   plug_1_runtime:
@@ -36,6 +60,9 @@ script: !include scripts.yaml
 
 lovelace:
   resource_mode: yaml
+  resources:
+    - url: /local/ac-cycle-flow-card.js?v=8
+      type: module
   dashboards:
     lovelace:
       mode: yaml
