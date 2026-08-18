@@ -66,10 +66,12 @@
   alias: "Plugs: enforce max runtime + auto-cycle handoff"
   description: >-
     When a plug's runtime timer finishes: if the OTHER plug's room has
-    opted out (plugX_participate off), just renew this plug's own timer
-    instead of forcing a pointless handoff (full-cycle continuation).
+    opted out (plugX_participate off), this plug renews its own timer
+    and keeps running (full-cycle continuation) UNLESS it has separately
+    opted out of using that freed-up time (plugX_use_unused_cycle off),
+    in which case it just stops - it defaults to using the unused cycle.
     Otherwise, if auto-cycle is enabled and away mode is off, turn the
-    other plug on 2s later to keep the rotation going. If neither
+    other plug on 2s later to keep the rotation going. If none of that
     applies, just turn off.
   mode: queued
   max: 10
@@ -100,14 +102,26 @@
                   state: "off"
               then:
                 # Plug 2's room doesn't want AC right now - keep Plug 1
-                # running instead of a pointless handoff. Renewing the
-                # timer (rather than disabling it) keeps the same
-                # max-runtime safety net in place for the extended run.
-                - service: script.activate_plug
-                  data:
-                    this_switch: switch.ac_plug_1_socket_1
-                    other_switch: switch.ac_plug_2_socket_1
-                    this_timer: timer.plug_1_runtime
+                # running instead of a pointless handoff, unless Plug 1
+                # has separately opted out of using that freed-up time.
+                - if:
+                    - condition: state
+                      entity_id: input_boolean.plug1_use_unused_cycle
+                      state: "on"
+                  then:
+                    # Renewing the timer (rather than disabling it) keeps
+                    # the same max-runtime safety net in place for the
+                    # extended run.
+                    - service: script.activate_plug
+                      data:
+                        this_switch: switch.ac_plug_1_socket_1
+                        other_switch: switch.ac_plug_2_socket_1
+                        this_timer: timer.plug_1_runtime
+                  else:
+                    - service: script.set_switch_with_retry
+                      data:
+                        target_switch: switch.ac_plug_1_socket_1
+                        desired_state: "off"
               else:
                 - service: script.set_switch_with_retry
                   data:
@@ -139,11 +153,21 @@
                   entity_id: input_boolean.plug1_participate
                   state: "off"
               then:
-                - service: script.activate_plug
-                  data:
-                    this_switch: switch.ac_plug_2_socket_1
-                    other_switch: switch.ac_plug_1_socket_1
-                    this_timer: timer.plug_2_runtime
+                - if:
+                    - condition: state
+                      entity_id: input_boolean.plug2_use_unused_cycle
+                      state: "on"
+                  then:
+                    - service: script.activate_plug
+                      data:
+                        this_switch: switch.ac_plug_2_socket_1
+                        other_switch: switch.ac_plug_1_socket_1
+                        this_timer: timer.plug_2_runtime
+                  else:
+                    - service: script.set_switch_with_retry
+                      data:
+                        target_switch: switch.ac_plug_2_socket_1
+                        desired_state: "off"
               else:
                 - service: script.set_switch_with_retry
                   data:
@@ -406,6 +430,12 @@
             - condition: state
               entity_id: input_boolean.auto_cycle_enabled
               state: "on"
+            - condition: state
+              entity_id: input_boolean.ac_away_mode
+              state: "off"
+            - condition: state
+              entity_id: input_boolean.plug2_participate
+              state: "on"
           sequence:
             - service: input_select.select_option
               target:
@@ -416,6 +446,12 @@
             - "{{ trigger.id == 'expired_2' }}"
             - condition: state
               entity_id: input_boolean.auto_cycle_enabled
+              state: "on"
+            - condition: state
+              entity_id: input_boolean.ac_away_mode
+              state: "off"
+            - condition: state
+              entity_id: input_boolean.plug1_participate
               state: "on"
           sequence:
             - service: input_select.select_option
