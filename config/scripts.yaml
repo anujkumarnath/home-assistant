@@ -1,3 +1,27 @@
+switch_command_async:
+  alias: "(internal) issue a single switch command without blocking the caller"
+  description: >-
+    Tuya's integration sometimes lets a raw network exception (e.g. a
+    Tuya cloud read timeout) escape uncaught, which continue_on_error
+    can't suppress since it only catches HomeAssistantError subclasses.
+    Running the actual switch.turn_on/off call as a detached script.turn_on
+    (wait=False) task means such an exception is logged and dies with the
+    task instead of propagating into set_switch_with_retry's repeat loop
+    or the automation that called it.
+  fields:
+    target_switch:
+      description: entity_id of the switch to set
+      example: switch.ac_plug_1_socket_1
+    desired_state:
+      description: "on or off"
+      example: "on"
+  sequence:
+    - service: "switch.turn_{{ desired_state }}"
+      target:
+        entity_id: "{{ target_switch }}"
+  mode: parallel
+  max: 10
+
 set_switch_with_retry:
   alias: Set a switch's state with retries and a failure notification
   description: >-
@@ -14,10 +38,13 @@ set_switch_with_retry:
   sequence:
     - repeat:
         sequence:
-          - service: "switch.turn_{{ desired_state }}"
-            continue_on_error: true
+          - service: script.turn_on
             target:
-              entity_id: "{{ target_switch }}"
+              entity_id: script.switch_command_async
+            data:
+              variables:
+                target_switch: "{{ target_switch }}"
+                desired_state: "{{ desired_state }}"
           - delay: "00:00:05"
         until:
           - condition: or

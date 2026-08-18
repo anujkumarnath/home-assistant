@@ -349,6 +349,48 @@
             target_switch: switch.ac_plug_1_socket_1
             desired_state: "on"
 
+- id: plug_unmonitored_runtime_recovery
+  alias: "Plugs: re-arm runtime timer if a plug is on but unmonitored"
+  description: >-
+    If a plug is on but its runtime timer isn't running (e.g. the
+    timer-expiry handoff crashed partway through on a transient Tuya
+    cloud error, leaving the plug on with no safety cutoff and the
+    interlock stuck since auto-cycle/stall-recovery only kick in when
+    both plugs read off), give it a fresh timer. Runs on the same
+    5-minute cadence as the watchdog above.
+  mode: queued
+  max: 10
+  trigger:
+    - platform: time_pattern
+      minutes: "/5"
+  action:
+    - if:
+        - condition: state
+          entity_id: switch.ac_plug_1_socket_1
+          state: "on"
+        - condition: state
+          entity_id: timer.plug_1_runtime
+          state: "idle"
+      then:
+        - service: script.activate_plug
+          data:
+            this_switch: switch.ac_plug_1_socket_1
+            other_switch: switch.ac_plug_2_socket_1
+            this_timer: timer.plug_1_runtime
+    - if:
+        - condition: state
+          entity_id: switch.ac_plug_2_socket_1
+          state: "on"
+        - condition: state
+          entity_id: timer.plug_2_runtime
+          state: "idle"
+      then:
+        - service: script.activate_plug
+          data:
+            this_switch: switch.ac_plug_2_socket_1
+            other_switch: switch.ac_plug_1_socket_1
+            this_timer: timer.plug_2_runtime
+
 - id: plug_resync_on_ha_start
   alias: "Plugs: resync runtime timers on Home Assistant startup"
   description: >-
