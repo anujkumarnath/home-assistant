@@ -22,7 +22,30 @@ function formatCurrent(amps) {
   return `${amps.toFixed(1)} A`;
 }
 
-const RING_R = 30;
+function formatEnergy(kwh) {
+  return `${kwh.toFixed(1)} kWh`;
+}
+
+// Compressor draw jumps between discrete stages rather than ramping
+// smoothly, so the fan's spin speed jumps between fixed tiers too instead
+// of interpolating continuously. 3s (the idle/low-stage speed) is the
+// baseline the other tiers speed up from. The top tier only realistically
+// triggers on the higher-capacity unit (up to ~2.5kW); the smaller unit
+// tops out around 1.9kW and will only ever reach the tier below it.
+const FAN_SPEED_STAGES = [
+  { maxWatts: 350, seconds: 3 },
+  { maxWatts: 800, seconds: 2.2 },
+  { maxWatts: 1300, seconds: 1.6 },
+  { maxWatts: 1900, seconds: 1 },
+  { maxWatts: Infinity, seconds: 0.6 },
+];
+
+function spinDurationForWatts(watts) {
+  const stage = FAN_SPEED_STAGES.find((s) => watts < s.maxWatts) || FAN_SPEED_STAGES[FAN_SPEED_STAGES.length - 1];
+  return `${stage.seconds}s`;
+}
+
+const RING_R = 36;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_R;
 
 class AcCycleFlowCard extends HTMLElement {
@@ -35,8 +58,8 @@ class AcCycleFlowCard extends HTMLElement {
       title: "Auto-Cycle Flow",
       plug1_name: "Plug 1",
       plug2_name: "Plug 2",
-      plug1_icon: "mdi:air-conditioner",
-      plug2_icon: "mdi:air-conditioner",
+      plug1_icon: "mdi:fan",
+      plug2_icon: "mdi:fan",
       ...config,
     };
     this._built = false;
@@ -137,17 +160,17 @@ class AcCycleFlowCard extends HTMLElement {
         .ac-card.away-active .ac-flow-row { filter: grayscale(0.7); opacity: 0.55; }
 
         .ac-flow-row { display: flex; align-items: center; justify-content: center; gap: 4px; transition: filter .3s ease, opacity .3s ease; }
-        .ac-node { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 104px; }
+        .ac-node { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 112px; }
         .ac-node-ring-wrap {
-          position: relative; width: 70px; height: 70px;
+          position: relative; width: 84px; height: 84px;
           display: flex; align-items: center; justify-content: center;
           cursor: pointer; transition: transform .15s ease;
         }
         .ac-node-ring-wrap:active { transform: scale(0.94); }
-        .ac-ring-svg { position: absolute; top: 0; left: 0; width: 70px; height: 70px; transform: rotate(-90deg); pointer-events: none; }
-        .ac-ring-track { fill: none; stroke: var(--divider-color, #444); stroke-width: 4; }
+        .ac-ring-svg { position: absolute; top: 0; left: 0; width: 84px; height: 84px; transform: rotate(-90deg); pointer-events: none; }
+        .ac-ring-track { fill: none; stroke: var(--divider-color, #444); stroke-width: 5; }
         .ac-ring-progress {
-          fill: none; stroke: var(--disabled-text-color, #888); stroke-width: 4;
+          fill: none; stroke: var(--disabled-text-color, #888); stroke-width: 5;
           stroke-linecap: round;
           transition: stroke-dashoffset 1s linear, stroke .3s ease;
         }
@@ -160,26 +183,40 @@ class AcCycleFlowCard extends HTMLElement {
         }
         @keyframes ac-ring-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .ac-node-circle {
-          width: 56px; height: 56px; border-radius: 50%; pointer-events: none;
+          width: 68px; height: 68px; border-radius: 50%; pointer-events: none;
           display: flex; align-items: center; justify-content: center;
           background: var(--disabled-text-color, #888);
           opacity: 0.35;
           transition: background .4s ease, opacity .4s ease;
         }
-        .ac-node-circle ha-icon { --mdc-icon-size: 28px; color: white; }
+        .ac-node-circle ha-icon { --mdc-icon-size: 34px; color: white; }
         .ac-node.active .ac-node-circle { opacity: 1; }
+        .ac-node.active .ac-node-circle ha-icon {
+          animation-name: ac-fan-spin;
+          animation-timing-function: linear;
+          animation-iteration-count: infinite;
+          animation-duration: 3s;
+        }
+        @keyframes ac-fan-spin { to { transform: rotate(360deg); } }
         .ac-node.plug1.active .ac-node-circle { background: var(--success-color, #4caf50); }
         .ac-node.plug2.active .ac-node-circle { background: var(--info-color, #2196f3); }
         .ac-node-label { font-size: 0.85em; color: var(--secondary-text-color); text-align: center; }
         .ac-node-time { font-variant-numeric: tabular-nums; margin-left: 4px; color: var(--primary-text-color); }
         .ac-node-power {
-          display: none; align-items: center; gap: 3px;
-          font-size: 0.68em; font-variant-numeric: tabular-nums;
+          display: none; align-items: center; justify-content: center; flex-wrap: nowrap;
+          white-space: nowrap;
+          gap: 6px;
+          font-size: 0.66em; font-variant-numeric: tabular-nums;
           color: var(--disabled-text-color, #888);
           margin-top: -4px;
         }
+        .ac-node-power .seg { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; }
+        .ac-node-power .mo-seg {
+          border-left: 1px solid var(--divider-color, #444);
+          padding-left: 6px;
+        }
         .ac-node-power.show { display: flex; }
-        .ac-node-power ha-icon { --mdc-icon-size: 12px; }
+        .ac-node-power ha-icon { --mdc-icon-size: 11px; }
         .ac-node-badge {
           position: absolute; bottom: -2px; right: -2px;
           width: 20px; height: 20px; border-radius: 50%;
@@ -191,21 +228,25 @@ class AcCycleFlowCard extends HTMLElement {
         .ac-node-ring-wrap.offline .ac-node-badge { display: flex; }
 
         .ac-participate {
-          display: inline-flex; align-items: center; gap: 5px;
+          display: inline-flex; align-items: center; gap: 4px;
           border: none; cursor: pointer; border-radius: 999px;
-          padding: 4px 10px; font-size: 0.72em; font-weight: 500;
+          padding: 2px 7px; font-size: 0.62em; font-weight: 500;
           background: transparent; border: 1px solid var(--divider-color, #444);
           color: var(--secondary-text-color);
           transition: all .2s ease;
         }
         .ac-participate:active { transform: scale(0.95); }
-        .ac-participate .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--disabled-text-color, #888); transition: background .2s ease; }
+        .ac-participate .dot {
+          width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+          background: var(--disabled-text-color, #888); transition: background .2s ease;
+        }
         .ac-participate.on { border-color: var(--success-color, #4caf50); color: var(--success-color, #4caf50); }
         .ac-participate.on .dot { background: var(--success-color, #4caf50); }
         .ac-participate.off { border-color: var(--divider-color, #444); color: var(--disabled-text-color, #888); }
         .ac-participate.off .dot { background: var(--disabled-text-color, #888); }
+        .ac-toggle-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; }
 
-        .ac-arrows { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 0 2px; max-width: 140px; align-self: flex-start; margin-top: 27px; }
+        .ac-arrows { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 0 2px; max-width: 140px; align-self: flex-start; margin-top: 33px; }
         .ac-arrow-svg { width: 100%; height: 16px; display: block; overflow: visible; }
         .ac-arrow-path {
           fill: none; stroke: var(--disabled-text-color, #888); stroke-width: 2;
@@ -293,16 +334,22 @@ class AcCycleFlowCard extends HTMLElement {
       <div class="ac-flow-row">
         <div class="ac-node plug1">
           <div class="ac-node-ring-wrap" data-toggle-switch="plug1">
-            <svg class="ac-ring-svg" viewBox="0 0 70 70">
-              <circle class="ac-ring-track" cx="35" cy="35" r="${RING_R}"></circle>
-              <circle class="ac-ring-progress" cx="35" cy="35" r="${RING_R}"></circle>
+            <svg class="ac-ring-svg" viewBox="0 0 84 84">
+              <circle class="ac-ring-track" cx="42" cy="42" r="${RING_R}"></circle>
+              <circle class="ac-ring-progress" cx="42" cy="42" r="${RING_R}"></circle>
             </svg>
             <div class="ac-node-circle"><ha-icon icon="${c.plug1_icon}"></ha-icon></div>
             <div class="ac-node-badge"><ha-icon icon="mdi:cloud-off-outline"></ha-icon></div>
           </div>
           <div class="ac-node-label">${c.plug1_name}<span class="ac-node-time"></span></div>
-          <div class="ac-node-power"><ha-icon icon="mdi:lightning-bolt"></ha-icon><span></span></div>
-          ${c.plug1_participate_entity ? `<button class="ac-participate" data-toggle-participate="plug1" type="button"><span class="dot"></span><span class="txt"></span></button>` : ""}
+          <div class="ac-node-power">
+            <span class="seg"><ha-icon icon="mdi:lightning-bolt"></ha-icon><span class="pc"></span></span>
+            <span class="seg mo-seg"><ha-icon icon="mdi:calendar-month"></ha-icon><span class="mo"></span></span>
+          </div>
+          <div class="ac-toggle-row">
+            ${c.plug1_participate_entity ? `<button class="ac-participate" data-toggle-participate="plug1" type="button"><span class="dot"></span><span class="txt"></span></button>` : ""}
+            ${c.plug1_use_unused_cycle_entity ? `<button class="ac-participate" data-toggle-unused="plug1" type="button"><span class="dot"></span><span class="txt"></span></button>` : ""}
+          </div>
         </div>
         <div class="ac-arrows">
           <svg class="ac-arrow-svg" viewBox="0 0 100 16" preserveAspectRatio="none">
@@ -324,16 +371,22 @@ class AcCycleFlowCard extends HTMLElement {
         </div>
         <div class="ac-node plug2">
           <div class="ac-node-ring-wrap" data-toggle-switch="plug2">
-            <svg class="ac-ring-svg" viewBox="0 0 70 70">
-              <circle class="ac-ring-track" cx="35" cy="35" r="${RING_R}"></circle>
-              <circle class="ac-ring-progress" cx="35" cy="35" r="${RING_R}"></circle>
+            <svg class="ac-ring-svg" viewBox="0 0 84 84">
+              <circle class="ac-ring-track" cx="42" cy="42" r="${RING_R}"></circle>
+              <circle class="ac-ring-progress" cx="42" cy="42" r="${RING_R}"></circle>
             </svg>
             <div class="ac-node-circle"><ha-icon icon="${c.plug2_icon}"></ha-icon></div>
             <div class="ac-node-badge"><ha-icon icon="mdi:cloud-off-outline"></ha-icon></div>
           </div>
           <div class="ac-node-label">${c.plug2_name}<span class="ac-node-time"></span></div>
-          <div class="ac-node-power"><ha-icon icon="mdi:lightning-bolt"></ha-icon><span></span></div>
-          ${c.plug2_participate_entity ? `<button class="ac-participate" data-toggle-participate="plug2" type="button"><span class="dot"></span><span class="txt"></span></button>` : ""}
+          <div class="ac-node-power">
+            <span class="seg"><ha-icon icon="mdi:lightning-bolt"></ha-icon><span class="pc"></span></span>
+            <span class="seg mo-seg"><ha-icon icon="mdi:calendar-month"></ha-icon><span class="mo"></span></span>
+          </div>
+          <div class="ac-toggle-row">
+            ${c.plug2_participate_entity ? `<button class="ac-participate" data-toggle-participate="plug2" type="button"><span class="dot"></span><span class="txt"></span></button>` : ""}
+            ${c.plug2_use_unused_cycle_entity ? `<button class="ac-participate" data-toggle-unused="plug2" type="button"><span class="dot"></span><span class="txt"></span></button>` : ""}
+          </div>
         </div>
       </div>
 
@@ -404,6 +457,8 @@ class AcCycleFlowCard extends HTMLElement {
       cardContent: root.querySelector(".ac-card-content"),
       node1: root.querySelector(".ac-node.plug1"),
       node2: root.querySelector(".ac-node.plug2"),
+      fanIcon1: root.querySelector(".ac-node.plug1 .ac-node-circle ha-icon"),
+      fanIcon2: root.querySelector(".ac-node.plug2 .ac-node-circle ha-icon"),
       ringWrap1: root.querySelector(".ac-node.plug1 .ac-node-ring-wrap"),
       ringWrap2: root.querySelector(".ac-node.plug2 .ac-node-ring-wrap"),
       ringProgress1: root.querySelector(".ac-node.plug1 .ac-ring-progress"),
@@ -414,6 +469,8 @@ class AcCycleFlowCard extends HTMLElement {
       power2: root.querySelector(".ac-node.plug2 .ac-node-power"),
       participate1: root.querySelector('[data-toggle-participate="plug1"]'),
       participate2: root.querySelector('[data-toggle-participate="plug2"]'),
+      unused1: root.querySelector('[data-toggle-unused="plug1"]'),
+      unused2: root.querySelector('[data-toggle-unused="plug2"]'),
       arrowFwd: root.querySelector(".ac-arrow-path.fwd"),
       arrowRev: root.querySelector(".ac-arrow-path.rev"),
       markerFwd: root.querySelector(".ac-arrow-marker.fwd"),
@@ -430,6 +487,7 @@ class AcCycleFlowCard extends HTMLElement {
   _onClick(e) {
     const switchToggle = e.target.closest("[data-toggle-switch]");
     const participateToggle = e.target.closest("[data-toggle-participate]");
+    const unusedToggle = e.target.closest("[data-toggle-unused]");
     const runtimeBtn = e.target.closest("[data-runtime]");
     const awayBtn = e.target.closest(".ac-switch.away");
     const autoCycleBtn = e.target.closest(".ac-switch.autocycle");
@@ -443,6 +501,9 @@ class AcCycleFlowCard extends HTMLElement {
     } else if (participateToggle) {
       const which = participateToggle.getAttribute("data-toggle-participate");
       this._call("input_boolean", "toggle", this._config[`${which}_participate_entity`]);
+    } else if (unusedToggle) {
+      const which = unusedToggle.getAttribute("data-toggle-unused");
+      this._call("input_boolean", "toggle", this._config[`${which}_use_unused_cycle_entity`]);
     } else if (runtimeBtn && this._config.max_runtime_entity) {
       const ent = this._hass.states[this._config.max_runtime_entity];
       if (ent) {
@@ -501,30 +562,46 @@ class AcCycleFlowCard extends HTMLElement {
     if (label) label.textContent = isOn ? labelOn : labelOff;
   }
 
-  _updateParticipate(el, isOn) {
+  _updatePill(el, isOn, labelOn, labelOff) {
     if (!el) return;
     el.classList.toggle("on", isOn);
     el.classList.toggle("off", !isOn);
     const txt = el.querySelector(".txt");
-    if (txt) txt.textContent = isOn ? "Participating" : "Skipped";
+    if (txt) txt.textContent = isOn ? labelOn : labelOff;
   }
 
-  _updatePower(el, powerEntityId, currentEntityId) {
+  _updateFanSpeed(iconEl, powerEntityId, isActive) {
+    if (!iconEl) return;
+    if (!isActive) {
+      iconEl.style.animationDuration = "";
+      return;
+    }
+    const powerEnt = powerEntityId ? this._hass.states[powerEntityId] : null;
+    const watts = powerEnt && !isNaN(Number(powerEnt.state)) ? Number(powerEnt.state) : 0;
+    iconEl.style.animationDuration = spinDurationForWatts(watts);
+  }
+
+  _updatePower(el, powerEntityId, currentEntityId, monthlyEntityId) {
     if (!el) return;
     const powerEnt = powerEntityId ? this._hass.states[powerEntityId] : null;
     const currentEnt = currentEntityId ? this._hass.states[currentEntityId] : null;
+    const monthlyEnt = monthlyEntityId ? this._hass.states[monthlyEntityId] : null;
     const powerVal = powerEnt && !isNaN(Number(powerEnt.state)) ? Number(powerEnt.state) : 0;
     const currentVal = currentEnt && !isNaN(Number(currentEnt.state)) ? Number(currentEnt.state) : 0;
+    const monthlyVal = monthlyEnt && !isNaN(Number(monthlyEnt.state)) ? Number(monthlyEnt.state) : 0;
 
-    const parts = [];
-    if (powerEntityId) parts.push(formatPower(powerVal));
-    if (currentEntityId) parts.push(formatCurrent(currentVal));
-    if (parts.length === 0) {
-      el.classList.remove("show");
-      return;
-    }
-    el.querySelector("span").textContent = parts.join(" · ");
-    el.classList.add("show");
+    const pcParts = [];
+    if (powerEntityId) pcParts.push(formatPower(powerVal));
+    if (currentEntityId) pcParts.push(formatCurrent(currentVal));
+    const pcSeg = el.querySelector(".pc").closest(".seg");
+    pcSeg.style.display = pcParts.length ? "" : "none";
+    if (pcParts.length) el.querySelector(".pc").textContent = pcParts.join(" · ");
+
+    const moSeg = el.querySelector(".mo-seg");
+    moSeg.style.display = monthlyEntityId ? "" : "none";
+    if (monthlyEntityId) el.querySelector(".mo").textContent = formatEnergy(monthlyVal);
+
+    el.classList.toggle("show", pcParts.length > 0 || !!monthlyEntityId);
   }
 
   _update() {
@@ -548,17 +625,26 @@ class AcCycleFlowCard extends HTMLElement {
     els.ringWrap1.classList.toggle("offline", plug1Offline);
     els.ringWrap2.classList.toggle("offline", plug2Offline);
 
+    this._updateFanSpeed(els.fanIcon1, this._config.plug1_power_entity, plug1On);
+    this._updateFanSpeed(els.fanIcon2, this._config.plug2_power_entity, plug2On);
+
     this._updateRing(els.ringProgress1, els.time1, this._config.plug1_timer);
     this._updateRing(els.ringProgress2, els.time2, this._config.plug2_timer);
 
-    this._updatePower(els.power1, this._config.plug1_power_entity, this._config.plug1_current_entity);
-    this._updatePower(els.power2, this._config.plug2_power_entity, this._config.plug2_current_entity);
+    this._updatePower(els.power1, this._config.plug1_power_entity, this._config.plug1_current_entity, this._config.plug1_monthly_energy_entity);
+    this._updatePower(els.power2, this._config.plug2_power_entity, this._config.plug2_current_entity, this._config.plug2_monthly_energy_entity);
 
     if (this._config.plug1_participate_entity) {
-      this._updateParticipate(els.participate1, hass.states[this._config.plug1_participate_entity]?.state !== "off");
+      this._updatePill(els.participate1, hass.states[this._config.plug1_participate_entity]?.state !== "off", "Participating", "Skipped");
     }
     if (this._config.plug2_participate_entity) {
-      this._updateParticipate(els.participate2, hass.states[this._config.plug2_participate_entity]?.state !== "off");
+      this._updatePill(els.participate2, hass.states[this._config.plug2_participate_entity]?.state !== "off", "Participating", "Skipped");
+    }
+    if (this._config.plug1_use_unused_cycle_entity) {
+      this._updatePill(els.unused1, hass.states[this._config.plug1_use_unused_cycle_entity]?.state !== "off", "Extends", "Fixed cycle");
+    }
+    if (this._config.plug2_use_unused_cycle_entity) {
+      this._updatePill(els.unused2, hass.states[this._config.plug2_use_unused_cycle_entity]?.state !== "off", "Extends", "Fixed cycle");
     }
 
     const switchingFwd = phase.startsWith("Switching: Plug 1");
