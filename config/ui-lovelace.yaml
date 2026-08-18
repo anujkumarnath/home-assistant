@@ -18,7 +18,11 @@ views:
         plug2_power_entity: sensor.ac_plug_2_power
         plug1_current_entity: sensor.ac_plug_1_current
         plug2_current_entity: sensor.ac_plug_2_current
+        plug1_monthly_energy_entity: sensor.plug_1_monthly_energy
+        plug2_monthly_energy_entity: sensor.plug_2_monthly_energy
         plug1_participate_entity: input_boolean.plug1_participate
         plug2_participate_entity: input_boolean.plug2_participate
+        plug1_use_unused_cycle_entity: input_boolean.plug1_use_unused_cycle
+        plug2_use_unused_cycle_entity: input_boolean.plug2_use_unused_cycle
         plug1_name: "Anuj's AC"
         plug2_name: "Cinu's AC"

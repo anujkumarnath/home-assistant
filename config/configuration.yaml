@@ -35,6 +35,14 @@ input_boolean:
     name: "Plug 2: Participates in Rotation"
     icon: mdi:sync
     initial: true
+  plug1_use_unused_cycle:
+    name: "Plug 1: Use Unused Cycle"
+    icon: mdi:timer-plus-outline
+    initial: true
+  plug2_use_unused_cycle:
+    name: "Plug 2: Use Unused Cycle"
+    icon: mdi:timer-plus-outline
+    initial: true
 
 input_select:
   ac_cycle_phase:
@@ -55,13 +63,23 @@ timer:
   plug_2_runtime:
     restore: true
 
+utility_meter:
+  plug1_monthly_energy:
+    name: "Plug 1 Monthly Energy"
+    source: sensor.ac_plug_1_total_energy
+    cycle: monthly
+  plug2_monthly_energy:
+    name: "Plug 2 Monthly Energy"
+    source: sensor.ac_plug_2_total_energy
+    cycle: monthly
+
 automation: !include automations.yaml
 script: !include scripts.yaml
 
 lovelace:
   resource_mode: yaml
   resources:
-    - url: /local/ac-cycle-flow-card.js?v=15
+    - url: /local/ac-cycle-flow-card.js?v=21
       type: module
   dashboards:
     lovelace:
