@@ -212,6 +212,16 @@ html, body {
   50% { opacity: 1; r: 4.5; }
 }
 
+/* Live wind-direction needle, just outside the outer ring — rotated to the real
+   compass bearing from Home Assistant's weather data (hidden when no bearing is reported) */
+.core-wind-vane {
+  opacity: 0; transition: opacity 0.6s ease;
+  filter: drop-shadow(0 0 4px rgba(34,211,238,0.9));
+}
+.core-wind-vane.on { opacity: 0.95; }
+.core-wind-vane line { stroke: #22d3ee; stroke-width: 3; }
+.core-wind-vane polygon { fill: #22d3ee; }
+
 /* Rotating sweep — pure CSS conic-gradient, GPU-friendly (transform only) */
 .core-sweep {
   position: absolute; inset: 6%; border-radius: 50%;

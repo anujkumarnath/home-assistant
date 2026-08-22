@@ -116,6 +116,7 @@
     el.wxWind = q("wx-wind");
     el.envRingFill = q("env-ring-fill");
     el.envParticles = q("env-particles");
+    el.windVane = q("wind-vane");
 
     el.plug1Unit = q("climate-plug1");
     el.plug2Unit = q("climate-plug2");
@@ -383,6 +384,16 @@
         var windUnit = (wx.attributes.wind_speed_unit || "").toLowerCase();
         var windKmh = windSpeed != null ? (windUnit.indexOf("mph") !== -1 ? mphToKmh(windSpeed) : windSpeed) : null;
         el.wxWind.textContent = windKmh != null ? Math.round(windKmh) + " km/h" : "--";
+
+        var windBearing = wx.attributes.wind_bearing;
+        if (el.windVane) {
+          if (typeof windBearing === "number" && !isNaN(windBearing)) {
+            el.windVane.setAttribute("transform", "rotate(" + windBearing + " 300 300)");
+            el.windVane.classList.add("on");
+          } else {
+            el.windVane.classList.remove("on");
+          }
+        }
 
         var isRainy = /rain|shower|storm|drizzle|snow/i.test(wx.state || "");
         el.envParticles.classList.toggle("show", isRainy);
