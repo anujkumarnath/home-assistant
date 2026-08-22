@@ -1,0 +1,273 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>AC Dashboard</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <div class="hud-bg">
+      <div class="hud-grid"></div>
+      <div class="hud-grid-fine"></div>
+      <div class="hud-scanline"></div>
+      <div class="hud-vignette"></div>
+    </div>
+
+    <!-- Midground: ties every module to the central core as one system -->
+    <svg class="hud-links" viewBox="0 0 1920 1080" preserveAspectRatio="none">
+      <path class="link-line" d="M960,540 L230,225" />
+      <path class="link-line" d="M960,540 L1730,225" />
+      <path class="link-line" d="M960,540 L230,895" />
+      <path class="link-line" d="M960,540 L1500,690" />
+      <circle class="link-node" cx="230" cy="225" r="3" />
+      <circle class="link-node" cx="1730" cy="225" r="3" />
+      <circle class="link-node" cx="230" cy="895" r="3" />
+      <circle class="link-node" cx="1500" cy="690" r="3" />
+    </svg>
+
+    <div id="boot-sequence" class="boot-sequence">
+      <div class="boot-line">SYSTEM INITIALIZING<span class="boot-cursor">&#9608;</span></div>
+      <div class="boot-line" data-step="1">NETWORK&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ONLINE</div>
+      <div class="boot-line" data-step="2">ENVIRONMENTAL SENSORS &nbsp;ONLINE</div>
+      <div class="boot-line" data-step="3">HVAC NETWORK &nbsp;&nbsp;&nbsp;ONLINE</div>
+      <div class="boot-line boot-line-final" data-step="4">SYSTEM &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ONLINE</div>
+    </div>
+
+    <div class="hud-header">
+      <span class="hud-header-block">
+        <span class="hud-tag-major">AC&nbsp;//&nbsp;DASHBOARD<span class="hud-cursor">&#9608;</span></span>
+        <span class="hud-tag-minor">HOME-CORE // 01</span>
+      </span>
+      <span class="hud-header-right">
+        <span class="hud-header-block hud-header-block-right">
+          <span class="hud-tag-major" id="hud-online-tag">SYSTEM ONLINE</span>
+          <span class="hud-tag-minor" id="hud-sync">SYNC 99.98%</span>
+        </span>
+        <button class="hud-gear" id="settings-gear" data-focusable tabindex="0">&#9881;</button>
+      </span>
+    </div>
+
+    <!-- ================= CENTRAL HUD / CLOCK / RADAR ================= -->
+    <div class="core-hud">
+      <svg class="core-svg" viewBox="0 0 600 600">
+        <defs>
+          <radialGradient id="core-glow" cx="50%" cy="50%" r="50%">
+            <stop offset="60%" stop-color="#22d3ee" stop-opacity="0" />
+            <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.06" />
+          </radialGradient>
+        </defs>
+        <circle cx="300" cy="300" r="290" fill="url(#core-glow)" />
+        <g class="core-wireframe" id="core-wireframe">
+          <ellipse cx="300" cy="300" rx="225" ry="70" />
+          <ellipse cx="300" cy="300" rx="225" ry="130" />
+          <ellipse cx="300" cy="300" rx="70" ry="225" />
+        </g>
+        <circle class="core-ring-outer" cx="300" cy="300" r="272" />
+        <g class="core-ticks" id="core-ticks"></g>
+        <g class="core-ring-mid-group">
+          <circle class="core-ring-mid" cx="300" cy="300" r="240" />
+          <g class="core-ring-mid-ticks" id="core-mid-ticks"></g>
+        </g>
+        <circle class="core-ring-inner" cx="300" cy="300" r="214" />
+        <text x="300" y="42" class="core-cardinal">000</text>
+        <text x="558" y="306" class="core-cardinal">090</text>
+        <text x="300" y="572" class="core-cardinal">180</text>
+        <text x="42" y="306" class="core-cardinal">270</text>
+        <text x="474" y="112" class="core-cardinal core-cardinal-minor">045</text>
+        <text x="474" y="500" class="core-cardinal core-cardinal-minor">135</text>
+        <text x="126" y="500" class="core-cardinal core-cardinal-minor">225</text>
+        <text x="126" y="112" class="core-cardinal core-cardinal-minor">315</text>
+        <g class="core-nodes" id="core-nodes"></g>
+      </svg>
+      <div class="core-sweep"></div>
+      <div class="core-orbit core-orbit-a"><span class="core-orbit-dot"></span></div>
+      <div class="core-orbit core-orbit-b"><span class="core-orbit-dot"></span></div>
+      <div class="core-center">
+        <div class="core-tag">SYSTEM CLOCK</div>
+        <div class="ss-clock"><span id="ss-time">--:--:--</span><span class="ss-ampm" id="ss-ampm">--</span></div>
+        <div class="ss-date" id="ss-date">--- // --- --</div>
+      </div>
+    </div>
+
+    <!-- ================= NETWORK ================= -->
+    <div class="hud-instrument inst-tl">
+      <div class="inst-corner corner-tl"></div>
+      <div class="inst-corner corner-br"></div>
+      <div class="inst-title">NETWORK</div>
+      <div class="inst-subtitle"><span class="hud-dot hud-dot-tiny" id="net-dot"></span>LOCAL NODE // ONLINE</div>
+      <div class="inst-ring-wrap">
+        <svg class="inst-ring" viewBox="0 0 100 100">
+          <circle class="ring-track" cx="50" cy="50" r="42" />
+          <circle class="ring-fill" id="net-ring-fill" cx="50" cy="50" r="42" />
+        </svg>
+        <div class="inst-ring-center">
+          <span class="inst-ring-value" id="net-signal-pct">--%</span>
+        </div>
+        <div class="inst-sweep-dot" id="net-sweep"></div>
+      </div>
+      <div class="inst-rxtx">
+        <span class="rxtx-item"><span class="rxtx-blip rxtx-rx"></span>RX</span>
+        <span class="rxtx-item"><span class="rxtx-blip rxtx-tx"></span>TX</span>
+      </div>
+      <div class="inst-telemetry">
+        <div class="tele-row"><span class="tele-k">IP</span><span class="tele-v" id="net-ip">--</span></div>
+        <div class="tele-row"><span class="tele-k">SSID</span><span class="tele-v" id="net-ssid">--</span></div>
+        <div class="tele-row"><span class="tele-k">SIGNAL</span><span class="tele-v" id="net-rssi">--</span></div>
+        <div class="tele-row"><span class="tele-k">LINK</span><span class="tele-v" id="net-speed">--</span></div>
+      </div>
+    </div>
+
+    <!-- ================= SYSTEM CORE ================= -->
+    <div class="hud-instrument inst-tr">
+      <div class="inst-corner corner-tl"></div>
+      <div class="inst-corner corner-br"></div>
+      <div class="inst-title">SYSTEM CORE</div>
+      <div class="inst-subtitle"><span class="hud-dot hud-dot-tiny" id="sys-core-dot"></span>CORE // NOMINAL</div>
+      <div class="inst-ring-wrap">
+        <svg class="inst-ring" viewBox="0 0 100 100">
+          <circle class="ring-track" cx="50" cy="50" r="42" />
+          <circle class="ring-fill" id="sys-ring-fill" cx="50" cy="50" r="42" />
+        </svg>
+        <div class="inst-ring-center">
+          <span class="inst-ring-value" id="sys-mem-pct">--%</span>
+        </div>
+      </div>
+      <div class="inst-telemetry">
+        <div class="tele-row"><span class="tele-k">MEMORY</span><span class="tele-v" id="sys-mem">--</span></div>
+        <div class="tele-row"><span class="tele-k">THERMAL</span><span class="tele-v" id="sys-thermal">--</span></div>
+        <div class="tele-row"><span class="tele-k">UPTIME</span><span class="tele-v" id="sys-uptime">--</span></div>
+      </div>
+    </div>
+
+    <!-- ================= ENVIRONMENT ================= -->
+    <div class="hud-instrument inst-bl">
+      <div class="inst-corner corner-tl"></div>
+      <div class="inst-corner corner-br"></div>
+      <div class="inst-title">ENVIRONMENT</div>
+      <div class="inst-subtitle"><span class="hud-dot hud-dot-tiny idle"></span>ATMOSPHERIC SENSOR</div>
+      <div class="inst-ring-wrap">
+        <div class="env-atmo-ring"></div>
+        <svg class="inst-ring" viewBox="0 0 100 100">
+          <circle class="ring-track" cx="50" cy="50" r="42" />
+          <circle class="ring-fill env-ring-fill" id="env-ring-fill" cx="50" cy="50" r="42" />
+        </svg>
+        <div class="inst-ring-center">
+          <span class="inst-ring-value inst-ring-value-warm" id="wx-temp">--&deg;</span>
+        </div>
+        <div class="env-particles" id="env-particles">
+          <span class="env-drop" style="left:20%; animation-delay:0s;"></span>
+          <span class="env-drop" style="left:40%; animation-delay:0.4s;"></span>
+          <span class="env-drop" style="left:60%; animation-delay:0.8s;"></span>
+          <span class="env-drop" style="left:80%; animation-delay:1.2s;"></span>
+        </div>
+      </div>
+      <div class="inst-telemetry">
+        <div class="tele-row"><span class="tele-k" id="wx-condition">--</span><span class="tele-v"></span></div>
+        <div class="tele-row"><span class="tele-k">HUMIDITY</span><span class="tele-v" id="wx-humidity">--</span></div>
+        <div class="tele-row"><span class="tele-k">WIND</span><span class="tele-v" id="wx-wind">--</span></div>
+      </div>
+    </div>
+
+    <!-- ================= HVAC NETWORK ================= -->
+    <div class="hud-instrument inst-br hvac-instrument">
+      <div class="inst-corner corner-tl"></div>
+      <div class="inst-corner corner-br"></div>
+      <div class="inst-title">HVAC NETWORK</div>
+
+      <svg class="hvac-trunk-svg" viewBox="0 0 300 40" preserveAspectRatio="none">
+        <path d="M150,0 L150,16" class="hvac-trunk" />
+        <path d="M150,16 L75,34" class="hvac-branch" id="hvac-branch-1" />
+        <path d="M150,16 L225,34" class="hvac-branch" id="hvac-branch-2" />
+        <circle cx="150" cy="16" r="2.5" class="hvac-junction" />
+      </svg>
+
+      <div class="hvac-nodes">
+        <div class="hvac-node" id="climate-plug1" data-focusable tabindex="0">
+          <span class="hvac-ring-wrap">
+            <svg class="hvac-ring" viewBox="0 0 100 100">
+              <circle class="ring-track" cx="50" cy="50" r="40" />
+              <circle class="hvac-ring-fill" id="ac1-ring" cx="50" cy="50" r="40" />
+            </svg>
+            <span class="hvac-dot" id="ac1-dot"></span>
+          </span>
+          <span class="hvac-name" id="ac1-name">PLUG 1</span>
+          <span class="hvac-state" id="ac1-state">--</span>
+          <span class="hvac-power" id="ac1-power">--</span>
+          <span class="hvac-power-mo" id="ac1-power-mo">--</span>
+          <span class="hvac-badges">
+            <button class="hvac-toggle" id="ac1-participate" data-focusable tabindex="0">
+              <span class="hvac-toggle-track"><span class="hvac-toggle-thumb"></span></span>
+              <span class="hvac-toggle-label">P</span>
+            </button>
+            <button class="hvac-toggle" id="ac1-unused" data-focusable tabindex="0">
+              <span class="hvac-toggle-track"><span class="hvac-toggle-thumb"></span></span>
+              <span class="hvac-toggle-label">E</span>
+            </button>
+          </span>
+        </div>
+
+        <div class="hvac-node" id="climate-plug2" data-focusable tabindex="0">
+          <span class="hvac-ring-wrap">
+            <svg class="hvac-ring" viewBox="0 0 100 100">
+              <circle class="ring-track" cx="50" cy="50" r="40" />
+              <circle class="hvac-ring-fill" id="ac2-ring" cx="50" cy="50" r="40" />
+            </svg>
+            <span class="hvac-dot" id="ac2-dot"></span>
+          </span>
+          <span class="hvac-name" id="ac2-name">PLUG 2</span>
+          <span class="hvac-state" id="ac2-state">--</span>
+          <span class="hvac-power" id="ac2-power">--</span>
+          <span class="hvac-power-mo" id="ac2-power-mo">--</span>
+          <span class="hvac-badges">
+            <button class="hvac-toggle" id="ac2-participate" data-focusable tabindex="0">
+              <span class="hvac-toggle-track"><span class="hvac-toggle-thumb"></span></span>
+              <span class="hvac-toggle-label">P</span>
+            </button>
+            <button class="hvac-toggle" id="ac2-unused" data-focusable tabindex="0">
+              <span class="hvac-toggle-track"><span class="hvac-toggle-thumb"></span></span>
+              <span class="hvac-toggle-label">E</span>
+            </button>
+          </span>
+        </div>
+      </div>
+
+      <div class="hud-divider"></div>
+
+      <button class="climate-toggle-row" id="climate-away" data-focusable tabindex="0">
+        <span class="tele-k">AWAY MODE</span><span class="hud-bracket-value" id="away-value">--</span>
+      </button>
+      <button class="climate-toggle-row" id="climate-autocycle" data-focusable tabindex="0">
+        <span class="tele-k">AUTO-CYCLE</span><span class="hud-bracket-value" id="autocycle-value">--</span>
+      </button>
+      <div class="climate-toggle-row">
+        <span class="tele-k">MAX RUNTIME</span>
+        <span class="climate-stepper">
+          <button class="hud-stepper-btn" id="runtime-minus" data-focusable tabindex="0">&#9664;</button>
+          <span class="hud-bracket-value" id="runtime-value">--</span>
+          <button class="hud-stepper-btn" id="runtime-plus" data-focusable tabindex="0">&#9654;</button>
+        </span>
+      </div>
+    </div>
+
+    <!-- ================= EVENT STREAM ================= -->
+    <div class="event-stream" id="event-stream"></div>
+
+    <div id="settings-overlay" class="hidden">
+      <div class="settings-box">
+        <h2>Setup</h2>
+        <label for="input-baseurl">Home Assistant URL</label>
+        <input type="text" id="input-baseurl" data-focusable tabindex="0" placeholder="http://192.168.1.3:8123" />
+        <label for="input-token">Long-Lived Access Token</label>
+        <input type="text" id="input-token" data-focusable tabindex="0" placeholder="paste token" />
+        <div class="settings-hint">Generate one in Home Assistant: profile (bottom-left) &rarr; Security &rarr; Long-Lived Access Tokens.</div>
+        <div class="settings-actions">
+          <button id="settings-save" data-focusable tabindex="0">Save</button>
+          <button id="settings-cancel" data-focusable tabindex="0">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
