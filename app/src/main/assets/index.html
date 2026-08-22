@@ -10,8 +10,18 @@
     <div class="hud-bg">
       <div class="hud-grid"></div>
       <div class="hud-grid-fine"></div>
+      <svg class="hud-live-map" id="live-map" viewBox="-900 -900 1800 1800" preserveAspectRatio="xMidYMid slice">
+        <g id="live-map-water"></g>
+        <g id="live-map-roads"></g>
+      </svg>
       <div class="hud-scanline"></div>
       <div class="hud-vignette"></div>
+    </div>
+
+    <!-- Real-world distance reference for the map layer, in an open strip below the clock -->
+    <div class="map-scale">
+      <span class="map-scale-bar"></span>
+      <span class="map-scale-label">100 M</span>
     </div>
 
     <!-- Midground: ties every module to the central core as one system -->

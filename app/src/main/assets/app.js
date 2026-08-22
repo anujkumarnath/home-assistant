@@ -42,6 +42,12 @@
   function saveSettings(obj) {
     window.AndroidBridge.saveSettings(JSON.stringify(obj));
   }
+  function fetchHaConfig() {
+    return bridgeCall(function (reqId) { window.AndroidBridge.fetchHaConfig(reqId); });
+  }
+  function fetchOverpassMap(lat, lon, radiusMeters) {
+    return bridgeCall(function (reqId) { window.AndroidBridge.fetchOverpassMap(reqId, lat, lon, radiusMeters); });
+  }
 
   // ---------------------------------------------------------------------
   // Formatting helpers
@@ -202,6 +208,74 @@
       c.style.animationDelay = (i * 0.7) + "s";
       g.appendChild(c);
     });
+  }
+
+  // ---------------------------------------------------------------------
+  // Live map background — real road/waterway geometry from OpenStreetMap,
+  // centered on Home Assistant's configured home location. Fetched once
+  // (via the Overpass API) and cached in localStorage, so it never repeats
+  // the network round-trip on later launches.
+  // ---------------------------------------------------------------------
+  var MAP_CACHE_KEY = "liveMapDataV1";
+  var MAP_RADIUS_M = 800;
+
+  function projectOverpassData(json, centerLat, centerLon) {
+    var metersPerDegLat = 111320;
+    var metersPerDegLon = 111320 * Math.cos(centerLat * Math.PI / 180);
+    var roadPaths = [];
+    var waterPaths = [];
+    var elements = (json && json.elements) || [];
+    elements.forEach(function (elItem) {
+      if (elItem.type !== "way" || !elItem.geometry || elItem.geometry.length < 2) return;
+      var d = elItem.geometry.map(function (pt, i) {
+        var x = ((pt.lon - centerLon) * metersPerDegLon).toFixed(1);
+        var y = (-(pt.lat - centerLat) * metersPerDegLat).toFixed(1);
+        return (i === 0 ? "M" : "L") + x + "," + y;
+      }).join(" ");
+      if (elItem.tags && elItem.tags.waterway) {
+        waterPaths.push(d);
+      } else {
+        roadPaths.push(d);
+      }
+    });
+    return { roadPaths: roadPaths, waterPaths: waterPaths };
+  }
+
+  function renderLiveMap(data) {
+    var roadsG = q("live-map-roads");
+    var waterG = q("live-map-water");
+    if (!roadsG || !waterG || !data) return;
+    var ns = "http://www.w3.org/2000/svg";
+    (data.roadPaths || []).forEach(function (d) {
+      var p = document.createElementNS(ns, "path");
+      p.setAttribute("d", d);
+      p.setAttribute("class", "live-map-road");
+      roadsG.appendChild(p);
+    });
+    (data.waterPaths || []).forEach(function (d) {
+      var p = document.createElementNS(ns, "path");
+      p.setAttribute("d", d);
+      p.setAttribute("class", "live-map-water");
+      waterG.appendChild(p);
+    });
+  }
+
+  function initLiveMap() {
+    var cached;
+    try { cached = JSON.parse(localStorage.getItem(MAP_CACHE_KEY)); } catch (e) { cached = null; }
+    if (cached) {
+      renderLiveMap(cached);
+      return;
+    }
+    fetchHaConfig().then(function (cfg) {
+      if (!cfg || !cfg._ok || !cfg.latitude || !cfg.longitude) return;
+      return fetchOverpassMap(cfg.latitude, cfg.longitude, MAP_RADIUS_M).then(function (res) {
+        if (!res || !res._ok) return;
+        var data = projectOverpassData(res.data, cfg.latitude, cfg.longitude);
+        try { localStorage.setItem(MAP_CACHE_KEY, JSON.stringify(data)); } catch (e) { /* storage full/unavailable, just skip caching */ }
+        renderLiveMap(data);
+      });
+    }).catch(function () { /* no map this session; retried on next launch */ });
   }
 
   // ---------------------------------------------------------------------
@@ -620,6 +694,7 @@
     cacheEls();
     buildCoreTicks();
     buildCoreNodes();
+    initLiveMap();
     config = getSettings();
     tickClock();
     pollSystemInfo();

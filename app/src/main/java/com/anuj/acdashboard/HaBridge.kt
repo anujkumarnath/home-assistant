@@ -119,6 +119,51 @@ class HaBridge(private val context: Context, private val webView: WebView) {
         }
     }
 
+    // Home Assistant already has the instance's home coordinates configured (used for its
+    // own sun/weather calculations), so the live-map background can reuse that instead of
+    // asking the user for a location or guessing one.
+    @JavascriptInterface
+    fun fetchHaConfig(reqId: String) {
+        executor.execute {
+            val result = JSONObject()
+            try {
+                val baseUrl = prefs.getString("baseUrl", "") ?: ""
+                val token = prefs.getString("token", "") ?: ""
+                val config = getJson(baseUrl, token, "/api/config")
+                result.put("_ok", true)
+                result.put("latitude", config.optDouble("latitude"))
+                result.put("longitude", config.optDouble("longitude"))
+            } catch (e: Exception) {
+                result.put("_ok", false)
+                result.put("_error", e.message ?: "error")
+            }
+            postResult(reqId, result.toString())
+        }
+    }
+
+    // One-time fetch of nearby road/waterway geometry from the public OpenStreetMap
+    // Overpass API for the live-map background. Not behind Home Assistant's URL/token, so
+    // it needs its own direct request; the JS side caches the result in localStorage so
+    // this only ever runs once per device, not on every launch.
+    @JavascriptInterface
+    fun fetchOverpassMap(reqId: String, lat: Double, lon: Double, radiusMeters: Int) {
+        executor.execute {
+            val result = JSONObject()
+            try {
+                val query = "[out:json][timeout:20];(way[\"highway\"](around:$radiusMeters,$lat,$lon);" +
+                    "way[\"waterway\"](around:$radiusMeters,$lat,$lon););out geom;"
+                val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+                val json = getJsonRaw("https://overpass-api.de/api/interpreter?data=$encoded")
+                result.put("_ok", true)
+                result.put("data", json)
+            } catch (e: Exception) {
+                result.put("_ok", false)
+                result.put("_error", e.message ?: "error")
+            }
+            postResult(reqId, result.toString())
+        }
+    }
+
     @JavascriptInterface
     fun callService(reqId: String, domain: String, service: String, entityId: String, extraJson: String) {
         executor.execute {
@@ -156,6 +201,43 @@ class HaBridge(private val context: Context, private val webView: WebView) {
             }
         }
         throw lastError!!
+    }
+
+    // Generic GET against Home Assistant's API (auth headers, short timeout) for
+    // non-entity endpoints like /api/config.
+    private fun getJson(baseUrl: String, token: String, path: String): JSONObject = withRetry {
+        val url = URL("$baseUrl$path")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.setRequestProperty("Authorization", "Bearer $token")
+        conn.connectTimeout = 2500
+        conn.readTimeout = 2500
+        try {
+            val code = conn.responseCode
+            if (code != 200) throw RuntimeException("HTTP $code")
+            val text = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
+            JSONObject(text)
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    // Generic GET against an arbitrary external URL (no auth headers, longer timeout —
+    // used for the one-time Overpass map fetch, which can be slow on a big query).
+    private fun getJsonRaw(fullUrl: String): JSONObject = withRetry(attempts = 2) {
+        val url = URL(fullUrl)
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.connectTimeout = 5000
+        conn.readTimeout = 20000
+        try {
+            val code = conn.responseCode
+            if (code != 200) throw RuntimeException("HTTP $code")
+            val text = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
+            JSONObject(text)
+        } finally {
+            conn.disconnect()
+        }
     }
 
     private fun getState(baseUrl: String, token: String, entityId: String): JSONObject = withRetry {

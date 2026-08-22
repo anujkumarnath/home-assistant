@@ -51,6 +51,32 @@ html, body {
   position: absolute; inset: 0;
   background: radial-gradient(ellipse at center, transparent 38%, rgba(0,0,0,0.78) 100%);
 }
+/* Real-geography road/waterway tracing, centered on home. Kept out from under the
+   central clock (mask) and dimmed well below the grid so it reads as quiet HUD
+   infrastructure, not a literal map. */
+.hud-live-map {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0.28; mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, transparent 0%, transparent 20%, rgba(0,0,0,0.5) 38%, black 58%);
+  mask-image: radial-gradient(circle at 50% 50%, transparent 0%, transparent 20%, rgba(0,0,0,0.5) 38%, black 58%);
+}
+.live-map-road { fill: none; stroke: #22d3ee; stroke-width: 2.2; opacity: 0.5; vector-effect: non-scaling-stroke; }
+.live-map-water { fill: none; stroke: #3a8fd1; stroke-width: 2.6; opacity: 0.45; vector-effect: non-scaling-stroke; }
+
+/* Real-world distance reference for the map, sat in the open strip below the clock */
+.map-scale {
+  position: absolute; top: 75vh; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; z-index: 1; opacity: 0.5; pointer-events: none;
+}
+.map-scale-bar {
+  display: block; width: 5.56vw; height: 1px; background: #22d3ee; position: relative;
+}
+.map-scale-bar::before, .map-scale-bar::after {
+  content: ""; position: absolute; top: -3px; width: 1px; height: 7px; background: #22d3ee;
+}
+.map-scale-bar::before { left: 0; }
+.map-scale-bar::after { right: 0; }
+.map-scale-label { font-size: 0.6vw; letter-spacing: 0.15em; color: #6fb8c4; }
 .hud-scanline {
   position: absolute; left: 0; right: 0; height: 12vh;
   background: linear-gradient(to bottom, transparent, rgba(34,211,238,0.05) 45%, rgba(34,211,238,0.09) 50%, rgba(34,211,238,0.05) 55%, transparent);
